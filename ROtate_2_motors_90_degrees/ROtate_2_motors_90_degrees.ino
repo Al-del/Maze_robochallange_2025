@@ -18,6 +18,42 @@ float gz_offset = -114;
 #define SDA 17
 #define SCL 14
 
+// --- Motor Class ---
+class Motor {
+  int in1, in2;
+  bool inverted;
+
+public:
+  Motor(int pin1, int pin2, bool inv = false) {
+    in1 = pin1;
+    in2 = pin2;
+    inverted = inv;
+    pinMode(in1, OUTPUT);
+    pinMode(in2, OUTPUT);
+  }
+
+  void setPower(int power) {
+    power = constrain(power, -255, 255);
+
+    if (inverted) power = -power;
+
+    if (power > 0) {
+      analogWrite(in1, power);
+      analogWrite(in2, 0);
+    } else if (power < 0) {
+      analogWrite(in1, 0);
+      analogWrite(in2, -power);
+    } else {
+      analogWrite(in1, 0);
+      analogWrite(in2, 0);
+    }
+  }
+};
+
+// Create motors
+Motor leftMotor(LEFT_MOTOR_IN1, LEFT_MOTOR_IN2);
+Motor rightMotor(RIGHT_MOTOR_IN1, RIGHT_MOTOR_IN2, true); // right motor mirrored
+
 // --- Functions for MPU9250 ---
 void writeRegister(uint8_t reg, uint8_t value) {
   Wire.beginTransmission(MPU9250_ADDR);
@@ -47,45 +83,10 @@ void calibrateGyroZ() {
   Serial.println("✅ Gyro Z calibration done!");
 }
 
-// --- Motor control ---
-void LeftMotorPower(int power) {
-  power = constrain(power, -255, 255);
-  if (power > 0) {
-    analogWrite(LEFT_MOTOR_IN1, power);
-    analogWrite(LEFT_MOTOR_IN2, 0);
-  } else if (power < 0) {
-    analogWrite(LEFT_MOTOR_IN1, 0);
-    analogWrite(LEFT_MOTOR_IN2, -power);
-  } else {
-    analogWrite(LEFT_MOTOR_IN1, 0);
-    analogWrite(LEFT_MOTOR_IN2, 0);
-  }
-}
-
-void RightMotorPower(int power) {
-  power = constrain(power, -255, 255);
-  // Inverted logic for mirrored motor
-  if (power > 0) {
-    analogWrite(RIGHT_MOTOR_IN1, 0);
-    analogWrite(RIGHT_MOTOR_IN2, power);
-  } else if (power < 0) {
-    analogWrite(RIGHT_MOTOR_IN1, -power);
-    analogWrite(RIGHT_MOTOR_IN2, 0);
-  } else {
-    analogWrite(RIGHT_MOTOR_IN1, 0);
-    analogWrite(RIGHT_MOTOR_IN2, 0);
-  }
-}
-
 void setup() {
   Serial.begin(115200);
   Wire.begin(SDA, SCL);
   delay(1000);
-
-  pinMode(LEFT_MOTOR_IN1, OUTPUT);
-  pinMode(LEFT_MOTOR_IN2, OUTPUT);
-  pinMode(RIGHT_MOTOR_IN1, OUTPUT);
-  pinMode(RIGHT_MOTOR_IN2, OUTPUT);
 
   // Initialize MPU
   writeRegister(0x6B, 0x00);  // Wake up
@@ -118,9 +119,9 @@ void loop() {
 
   // --- Rotate until ±90 degrees reached ---
   if (absYaw < 90.0) {
-    int baseSpeed = 45; // slower base speed
-    int minSpeed = 27;  // very slow near target
-    float slowZone = 32.0; // larger slowdown zone
+    int baseSpeed = 40; // slower base speed
+    int minSpeed = 15;  // very slow near target
+    float slowZone = 25.0; // larger slowdown zone
 
     int pwm = baseSpeed;
     if (absYaw > (90.0 - slowZone)) {
@@ -129,11 +130,11 @@ void loop() {
     pwm = constrain(pwm, minSpeed, baseSpeed);
 
     // Rotate in place: left forward, right backward
-    LeftMotorPower(pwm);
-    RightMotorPower(-pwm);
+    leftMotor.setPower(-pwm);
+    rightMotor.setPower(pwm);
   } else {
-    LeftMotorPower(0);
-    RightMotorPower(0);
+    leftMotor.setPower(0);
+    rightMotor.setPower(0);
     Serial.println("🛑 Target reached: ±90°");
     while (1); // Stop permanently
   }
